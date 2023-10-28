@@ -1,5 +1,9 @@
 #include <Servo.h> 
 
+bool isWalleEnabled = false;
+const byte detectWalleEnabledPin = 7;
+
+
 /**
  * Head UpDown direction pins and motors
  */
@@ -59,6 +63,9 @@ unsigned long pumpStartTime;
 
 void setup(){
 
+  // Detect if walle is enabled
+  pinMode( detectWalleEnabledPin, INPUT );
+
   // Head up down
   pinMode(headUpDownDirectionSensorPin, INPUT_PULLUP);
   headUpDownDirectionServoRight.attach(headUpDownDirectionMotorRightPin);
@@ -89,18 +96,42 @@ void setup(){
 }
 
 void loop() {
-  modifyOilPumpSpeed();
-  headUpDown();
-  headLeftRight();
-  goingBackForward();
+
+  detectIfWalleIsEnabled();
+
+  if ( isWalleEnabled ) {
+    modifyOilPumpSpeed();
+    headUpDown();
+    headLeftRight();
+    goingBackForward();
+  }
+  
 }
 
 
+void detectIfWalleIsEnabled() {
+  byte walleIsEnabledInputValue = GetPWM(detectWalleEnabledPin);
+  
+  // Button from controll return 5 for disable and 10 e enable
+  if ( walleIsEnabledInputValue > 7 ) {
+    isWalleEnabled = 1;
+  } else {
+    isWalleEnabled = 0;
+  }
+
+  Serial.print("is enabled: ");
+  Serial.println(isWalleEnabled);
+}
+
 void oilPumpOn() {
+  Serial.print("oilPumOn function call. isOn: " );
+  Serial.print(oilPumpIsOn);
+  Serial.println();
+
   if ( ! oilPumpIsOn ) {
-    // oilPumpIsOn = true;
-    // oilPump.write( oilPumpStartupSpeed );
-    // pumpStartTime = millis();
+    oilPumpIsOn = true;
+    oilPump.write( oilPumpStartupSpeed );
+    pumpStartTime = millis();
   }
 }
 
@@ -119,7 +150,7 @@ void modifyOilPumpSpeed() {
     oilPumpOff();
   }
 
-  if ( lastSpeedChangeTime + 50 > millis() ) {
+  if ( lastSpeedChangeTime + 200 > millis() ) {
     oilPumpOn();
   }
 }
@@ -152,14 +183,14 @@ void headUpDown() {
     headUpDownDirectionServoLeft.detach();
   }
 
-  Serial.print( "Head puslse: ");
-  Serial.print( headUpDownPulseWidthReverse );
-  Serial.print( " - left: ");
-  Serial.print(headUpDownMotorLeftValueAngle);
-  Serial.print( " - right: ");
-  Serial.print(headUpDownMotorRightValueAngle);
-  Serial.print( " - ");
-  Serial.println();  
+  // Serial.print( "Head puslse: ");
+  // Serial.print( headUpDownPulseWidthReverse );
+  // Serial.print( " - left: ");
+  // Serial.print(headUpDownMotorLeftValueAngle);
+  // Serial.print( " - right: ");
+  // Serial.print(headUpDownMotorRightValueAngle);
+  // Serial.print( " - ");
+  // Serial.println();
 }
 
 /**
@@ -199,6 +230,10 @@ void headLeftRight() {
  * Going forward and backwards
  */
 void goingBackForward() {
+  if (backForwardPulses < 2000){
+    backForwardPulseWidth = backForwardPulses;
+  }
+
   const int backForwardPulseWidthNormalized = round( backForwardPulseWidth * 0.01 );
   const int frontPWMValue = constrain( map( backForwardPulseWidthNormalized, 15, 20, 0, MAX_SPEED_PWM_VALUE ), 0, MAX_SPEED_PWM_VALUE );
   const int backwardsPWMValue = constrain( map( backForwardPulseWidthNormalized, 15, 10, 0, MAX_SPEED_PWM_VALUE ), 0, MAX_SPEED_PWM_VALUE );
@@ -250,4 +285,15 @@ void backForwardPulseTimer() {
     backForwardPulses = backForwardCurrentTime - backForwardStartTime;
     backForwardStartTime = backForwardCurrentTime;
   }
+}
+
+byte GetPWM(byte pin) {
+  unsigned long highTime = pulseIn(pin, HIGH, 50000UL);  // 50 millisecond timeout
+  unsigned long lowTime = pulseIn(pin, LOW, 50000UL);    // 50 millisecond timeout
+
+  // pulseIn() returns zero on timeout
+  if (highTime == 0 || lowTime == 0)
+    return digitalRead(pin) ? 100 : 0;  // HIGH == 100%,  LOW = 0%
+
+  return (100 * highTime) / (highTime + lowTime);  // highTime as percentage of total cycle time
 }
