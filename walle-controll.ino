@@ -1,81 +1,171 @@
-const byte motorSpeedPwmPin = 2;
-const byte motorDirectionPwmPin = 3;
-const byte motorSpeedOutputPin = 9;
-const byte motorDirectionOutputPin = 8;
-unsigned long directionLastChange = 0;
-int directionLastValue = 0;
-const int directionChangeSeconds = 1;
+#include <Servo.h> 
+
+/**
+ * Head direction pins and motors
+ */
+int headUpDownDirectionSensorPin = 2;
+volatile long headUpDownStartTime = 0;
+volatile long headUpDownCurrentTime = 0;
+volatile long headUpDownPulses = 0;
+int headUpDownPulseWidth = 0;
+const byte headUpDownDirectionMotorRightPin = 10;
+const byte headUpDownDirectionMotorLeftPin = 11;
+Servo headUpDownDirectionServoRight;
+Servo headUpDownDirectionServoLeft;
+
+/**
+ * Back forward direction pins and motors
+ */
+int backForwardSensorPin = 3;
+volatile long backForwardStartTime = 0;
+volatile long backForwardCurrentTime = 0;
+volatile long backForwardPulses = 0;
+volatile long lastSpeedChangeTime = 0;
+int backForwardPulseWidth = 0;
+const byte backForwardDirectionMotorFrontPin = 12;
+const byte backForwardDirectionMotorRearPin = 13;
+const byte backForwardL_enable = 52;
+const byte backForwardR_enable = 53;
+const byte MAX_SPEED_PWM_VALUE = 150;
+
+/**
+ * Oil pump
+ */
+const byte oilPumpPWMPin = 4;
+const byte oilPumpStartupSpeed = 200;
+const byte oilPumpOperationSpeed = 90;
+bool oilPumpIsOn = false;
+const int reduceOilPumpPressureAfterMS = 3000;
+const int stopOilPumpPressureAfterMS = 10000;
+Servo oilPump;
+unsigned long pumpStartTime;
+
 
 void setup(){
 
-  pinMode(motorSpeedPwmPin, INPUT);
-  pinMode(motorDirectionPwmPin, INPUT);
+  // Head up down
+  pinMode(headUpDownDirectionSensorPin, INPUT_PULLUP);
+  headUpDownDirectionServoRight.attach(headUpDownDirectionMotorRightPin);
+  headUpDownDirectionServoLeft.attach(headUpDownDirectionMotorLeftPin);
+  attachInterrupt(digitalPinToInterrupt(headUpDownDirectionSensorPin), headUpDownPulseTimer, CHANGE);
+  
+  // Back forward
+  pinMode(backForwardL_enable, OUTPUT);
+  pinMode(backForwardR_enable, OUTPUT);
+  digitalWrite(backForwardL_enable, HIGH);
+  digitalWrite(backForwardR_enable, HIGH);
+  pinMode(backForwardDirectionMotorFrontPin, OUTPUT);
+  pinMode(backForwardDirectionMotorRearPin, OUTPUT);
+  attachInterrupt(digitalPinToInterrupt(backForwardSensorPin), backForwardPulseTimer, CHANGE);
 
-  pinMode(13, OUTPUT);
-  pinMode(motorSpeedOutputPin, OUTPUT);
-  pinMode(motorDirectionOutputPin, OUTPUT);
+  // Oil PUMP starts disabled
+  oilPump.attach( oilPumpPWMPin, 1000, 2000 );
+  oilPump.write(0);
+
+
 
   Serial.begin(115200);
+  Serial.println("Wall-e started!");
+
+  delay(100);
+}
+
+void headUpDownPulseTimer() {
+  headUpDownCurrentTime  = micros();
+  if (headUpDownCurrentTime > headUpDownStartTime) {
+    headUpDownPulses = headUpDownCurrentTime - headUpDownStartTime;
+    headUpDownStartTime = headUpDownCurrentTime;
+  }
+}
+
+void backForwardPulseTimer() {
+  backForwardCurrentTime  = micros();
+  if (backForwardCurrentTime > backForwardStartTime) {
+    backForwardPulses = backForwardCurrentTime - backForwardStartTime;
+    backForwardStartTime = backForwardCurrentTime;
+  }
 }
 
 void loop() {
-  byte motorSpeedInputValue = GetPWM(motorSpeedPwmPin);
-  byte motorDirectionInputValue = GetPWM(motorDirectionPwmPin);
+  modifyOilPumpSpeed();
 
+  if (headUpDownPulses < 2000){
+    headUpDownPulseWidth = headUpDownPulses;
+  }
+  if (backForwardPulses < 2000){
+    backForwardPulseWidth = backForwardPulses;
+  }
 
-  if ( motorDirectionInputValue < 8 ) {
-    Serial.println( "Bachoe Disabled");
-    digitalWrite(13, LOW);
-    analogWrite( motorSpeedOutputPin, 0 );
+  /**
+   * Head up down
+   */
+  int headUpDownMotorLeftValueAngle = constrain( map(headUpDownPulseWidth, 985, 1800, 140, 40), 45, 130) +2;
+  int headUpDownMotorRightValueAngle = constrain( map(headUpDownPulseWidth, 985, 1800, 40, 140), 50, 135);
+  headUpDownDirectionServoRight.write(headUpDownMotorRightValueAngle);
+  headUpDownDirectionServoLeft.write(headUpDownMotorLeftValueAngle);
+  // Serial.print( "Head puslse: ");
+  // Serial.print( headUpDownPulseWidth);
+  // Serial.print( " - left: ");
+  // Serial.print(headUpDownMotorLeftValueAngle);
+  // Serial.print( " - right: ");
+  // Serial.print(headUpDownMotorRightValueAngle);
+  // Serial.print( " - ");
+
+  /**
+   * Going forward and backwards
+   */
+  Serial.print( "Back forward puslse: ");
+  Serial.print( backForwardPulseWidth);
+  const int frontPWMValue = constrain( map( backForwardPulseWidth, 1490, 1980, 0, MAX_SPEED_PWM_VALUE ), 0, MAX_SPEED_PWM_VALUE );
+  const int backwardsPWMValue = constrain( map( backForwardPulseWidth, 1450, 990, 0, MAX_SPEED_PWM_VALUE ), 0, MAX_SPEED_PWM_VALUE );
+
+  if ( frontPWMValue > 5 || backwardsPWMValue > 5 ) {
+    lastSpeedChangeTime = millis();
+  }
+
+  if ( frontPWMValue > 0 ) {
+    digitalWrite( backForwardDirectionMotorRearPin, LOW );
+    analogWrite( backForwardDirectionMotorFrontPin, frontPWMValue );
+
   } else {
-    digitalWrite(13, HIGH);
-
-    int motorSpeedOutputValue = map(motorSpeedInputValue, 5, 11, 0, 100);
-    int motorDirectionOutputValue = map(motorDirectionInputValue, 5, 11, 0, 100);
-
-    if ( millis() > directionLastChange + (directionChangeSeconds * 1000) ) {
-      analogWrite( motorSpeedOutputPin, motorSpeedOutputValue );
-    } else {
-      analogWrite( motorSpeedOutputPin, 0);
-      delay(1000);
-    }
-
-    if ( motorDirectionInputValue == 8) {
-      // Go front
-      digitalWrite( motorDirectionOutputPin, 0 );
-    } else {
-      digitalWrite( motorDirectionOutputPin, 1 );
-    }
-
-
-/*
-    Serial.print( "Direction: " );
-    Serial.print( motorDirectionInputValue );
-    Serial.print( " - speed input: " );
-    Serial.print(motorSpeedInputValue);
-    Serial.print( " - speed output: " );
-    Serial.println(motorSpeedOutputValue);
-*/
-
+    digitalWrite( backForwardDirectionMotorFrontPin, LOW );
+    analogWrite( backForwardDirectionMotorRearPin, backwardsPWMValue );
   }
+  Serial.print( " - frontPWMValue: ");
+  Serial.print( frontPWMValue );
+  Serial.print( " - backwardsPWMValue: ");
+  Serial.print( backwardsPWMValue );
 
-  if ( directionLastValue != motorDirectionInputValue ) {
-    Serial.println("directionLastValue != motorDirectionInputValue");
-    directionLastValue = motorDirectionInputValue;
-    directionLastChange = millis();
-  }
+
+  Serial.println();
 
 }
 
-byte GetPWM(byte pin) {
-  unsigned long highTime = pulseIn(pin, HIGH, 50000UL);  // 50 millisecond timeout
-  unsigned long lowTime = pulseIn(pin, LOW, 50000UL);    // 50 millisecond timeout
 
-  // pulseIn() returns zero on timeout
-  if (highTime == 0 || lowTime == 0)
-    return digitalRead(pin) ? 100 : 0;  // HIGH == 100%,  LOW = 0%
-
-  return (100 * highTime) / (highTime + lowTime);  // highTime as percentage of total cycle time
+void oilPumpOn() {
+  if ( ! oilPumpIsOn ) {
+    oilPumpIsOn = true;
+    oilPump.write( oilPumpStartupSpeed );
+    pumpStartTime = millis();
+  }
 }
 
+void oilPumpOff() {
+  oilPumpIsOn = false;
+  oilPump.write( 0 );
+  pumpStartTime = millis();
+}
 
+void modifyOilPumpSpeed() {
+  if ( millis() > pumpStartTime + reduceOilPumpPressureAfterMS ) {
+    oilPump.write( oilPumpOperationSpeed );
+  }
+
+  if ( millis() > lastSpeedChangeTime + stopOilPumpPressureAfterMS ) {
+    oilPumpOff();
+  }
+
+  if ( lastSpeedChangeTime + 50 > millis() ) {
+    oilPumpOn();
+  }
+}
