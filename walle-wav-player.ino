@@ -23,8 +23,7 @@ WaveHC wave;      // This is the only wave (audio) object, since we will only pl
 void setup() {
   // set up Serial library at 9600 bps
   Serial.begin(9600);           
-  
-  PgmPrintln("Pi speaker");
+  pinMode(13, HIGH);
   
   if (!card.init()) {
     error("Card init. failed!");
@@ -36,9 +35,11 @@ void setup() {
     error("Couldn't open dir");
   }
 
-  PgmPrintln("Files found:");
-  // root.ls();
-  playcomplete("WALLE10.WAV");
+  Serial.println("ready");
+
+  // PgmPrintln("Files found:");
+  // // root.ls();
+  // playcomplete("WALLE10.WAV");
 }
 
 /////////////////////////////////// LOOP
@@ -47,8 +48,44 @@ unsigned digit = 0;
 
 void loop() { 
   
-  
+// Se receber algo pela serial
+  if (Serial.available() > 0){
+    // Lê toda string recebida
+    String recebido = leStringSerial();
+
+    playcomplete(recebido.c_str());
+    Serial.println("sound plaid");
+  }
 }
+
+
+/**
+ * Função que lê uma string da Serial
+ * e retorna-a
+ */
+String leStringSerial(){
+  String conteudo = "";
+  char caractere;
+  
+  // Enquanto receber algo pela serial
+  while(Serial.available() > 0) {
+    // Lê byte da serial
+    caractere = Serial.read();
+    // Ignora caractere de quebra de linha
+    if (caractere != '\n'){
+      // Concatena valores
+      conteudo.concat(caractere);
+    }
+    // Aguarda buffer serial ler próximo caractere
+    delay(10);
+  }
+    
+  Serial.print("Recebi: ");
+  Serial.println(conteudo);
+    
+  return conteudo;
+}
+
 
 /////////////////////////////////// HELPERS
 
@@ -101,4 +138,3 @@ void playfile(char *name) {
   // ok time to play!
   wave.play();
 }
-
