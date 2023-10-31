@@ -1,5 +1,7 @@
 #include <Servo.h> 
+#include <RCSwitch.h>
 
+RCSwitch rfControl = RCSwitch();
 bool isWalleEnabled = false;
 const byte detectWalleEnabledPin = 7;
 
@@ -61,6 +63,16 @@ Servo oilPump;
 unsigned long pumpStartTime;
 
 
+/**
+ * Prepare rf433 pin
+ * Codes:
+ * 174102677
+ * 174102693
+ * 130809621
+ */
+const byte rf433Pin = 19;
+
+
 void setup(){
 
   // Detect if walle is enabled
@@ -90,7 +102,15 @@ void setup(){
   oilPump.attach( oilPumpPWMPin, 1000, 2000 );
   oilPump.write(0);
 
-  Serial.begin(115200);
+  // Starts RF433Mhz module
+  rfControl.enableReceive( digitalPinToInterrupt( rf433Pin ) );
+
+
+  // Prepare communication with waveshield
+  Serial2.begin( 9600 );
+
+  // Prepare communication with PC
+  Serial.begin( 115200 );
   Serial.println("Wall-e started!");
 
 }
@@ -104,6 +124,37 @@ void loop() {
     headUpDown();
     headLeftRight();
     goingBackForward();
+  }
+
+  if ( rfControl.available() ) {
+    Serial.print("Received ");
+    Serial.print( rfControl.getReceivedValue() );
+    String music = "";
+
+    switch ( rfControl.getReceivedValue() ) {
+      case 174102677:
+        music = "01.WAV";
+        break;
+      case 174102693:
+        music = "02.WAV";
+        break;
+      case 130809621:
+        music = "03.WAV";
+        break;
+    }
+    // Serial.print(" / ");
+    // Serial.print( rfControl.getReceivedBitlength() );
+    // Serial.print("bit ");
+    // Serial.print("Protocol: ");
+    // Serial.println( rfControl.getReceivedProtocol() );
+    Serial.print( "Playing " );
+    Serial.println( music );
+    
+
+    Serial2.write( music.c_str(), 11 );
+    Serial.println( "Music played");
+    delay(2000);
+    rfControl.resetAvailable();
   }
   
 }
