@@ -51,9 +51,12 @@ void loop() {
 // Se receber algo pela serial
   if (Serial.available() > 0){
     // Lê toda string recebida
-    String recebido = leStringSerial();
+    //String recebido = leStringSerial();
+    
+    char robotMusic[20];
 
-    playcomplete(recebido.c_str());
+    Serial.readBytes( robotMusic, 11 );
+    playcomplete( robotMusic );
     Serial.println("sound plaid");
   }
 }
