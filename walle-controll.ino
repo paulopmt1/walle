@@ -1,10 +1,23 @@
-#include <Servo.h> 
+// #include <Servo.h> 
 #include <RCSwitch.h>
+#include <VarSpeedServo.h> 
 
 RCSwitch rfControl = RCSwitch();
 bool isWalleEnabled = false;
 const byte detectWalleEnabledPin = 7;
 
+/**
+ * Wall-e sounds
+ *
+ * 01.wav => waleeee happy
+ * 02.wav => call attention
+ * 03.wav => grgrgruggrugrg
+ * 04.wav => look at the ring
+ * 05.wav => oooooohhhh
+ * 06.wav => kisses
+ * 07.wav => kisses 2
+ * 08.wav => waleee long
+ */
 
 /**
  * Head UpDown direction pins and motors
@@ -16,8 +29,8 @@ volatile long headUpDownPulses = 0;
 int headUpDownPulseWidth = 0;
 const byte headUpDownDirectionMotorRightPin = 10;
 const byte headUpDownDirectionMotorLeftPin = 11;
-Servo headUpDownDirectionServoRight;
-Servo headUpDownDirectionServoLeft;
+VarSpeedServo headUpDownDirectionServoRight;
+VarSpeedServo headUpDownDirectionServoLeft;
 int lastHeadUpDownValue = 0;
 long int lastHeadUpDownChangeTime = 0;
 
@@ -30,7 +43,7 @@ volatile long headRightLeftCurrentTime = 0;
 volatile long headRightLeftPulses = 0;
 int headRightLeftPulseWidth = 0;
 const byte headRightLeftDirectionMotorPin = 9;
-Servo headRightLeftDirectionServo;
+VarSpeedServo headRightLeftDirectionServo;
 int lastHeadRightLeftValue = 0;
 long int lastHeadRightLeftChangeTime = 0;
 
@@ -51,6 +64,13 @@ const byte MAX_SPEED_PWM_VALUE = 150;
 
 
 /**
+ * Right arm
+ */
+const byte rightArmMotorPin = 8;
+VarSpeedServo rightArmServo;
+volatile long timeSinceItWasUp = 0;
+
+/**
  * Oil pump
  */
 const byte oilPumpPWMPin = 4;
@@ -59,7 +79,7 @@ const byte oilPumpOperationSpeed = 90;
 bool oilPumpIsOn = false;
 const int reduceOilPumpPressureAfterMS = 3000;
 const int stopOilPumpPressureAfterMS = 5000;
-Servo oilPump;
+VarSpeedServo oilPump;
 unsigned long pumpStartTime;
 
 
@@ -71,6 +91,7 @@ unsigned long pumpStartTime;
  * 130809621
  */
 const byte rf433Pin = 19;
+volatile long lastRfSignal;
 
 
 void setup(){
@@ -104,7 +125,12 @@ void setup(){
 
   // Starts RF433Mhz module
   rfControl.enableReceive( digitalPinToInterrupt( rf433Pin ) );
+  lastRfSignal = 0;
 
+  // Right arm
+  pinMode( rightArmMotorPin, OUTPUT );
+  rightArmServo.attach( rightArmMotorPin );
+  rightArmServo.write(0, 20, true);
 
   // Prepare communication with waveshield
   Serial2.begin( 9600 );
@@ -124,39 +150,52 @@ void loop() {
     headUpDown();
     headLeftRight();
     goingBackForward();
+    checkShouldFallHand();
   }
 
   if ( rfControl.available() ) {
     Serial.print("Received ");
-    Serial.print( rfControl.getReceivedValue() );
     String music = "";
+    int receivedValue = rfControl.getReceivedValue();
+    Serial.print( receivedValue );
 
-    switch ( rfControl.getReceivedValue() ) {
-      case 174102677:
-        music = "01.WAV";
-        break;
-      case 174102693:
-        music = "02.WAV";
-        break;
-      case 130809621:
-        music = "03.WAV";
-        break;
+    if ( receivedValue == -26459 ) {
+      music = "01.wav";
     }
+    else if ( receivedValue == -26475 ) {
+      showRings();
+      //music = "02.wav";
+    }
+    else if ( receivedValue == -235 ) {
+      music = "03.wav";
+    }
+
     // Serial.print(" / ");
     // Serial.print( rfControl.getReceivedBitlength() );
     // Serial.print("bit ");
     // Serial.print("Protocol: ");
     // Serial.println( rfControl.getReceivedProtocol() );
-    Serial.print( "Playing " );
-    Serial.println( music );
-    
+    if ( music != "" ) {
+      playMusic( music );
+    }
 
-    Serial2.write( music.c_str(), 11 );
-    Serial.println( "Music played");
-    delay(2000);
+    lastRfSignal = millis();
     rfControl.resetAvailable();
   }
   
+}
+
+void playMusic( String music ) {
+    Serial.print( "Playing " );
+    Serial.println( music );
+
+    Serial2.write( music.c_str(), 11 );
+    while ( Serial2.available() > 0 ) {
+      Serial.print( Serial2.read() );
+      delay(10);
+    }
+
+    Serial.println( "Music played");
 }
 
 
@@ -170,20 +209,20 @@ void detectIfWalleIsEnabled() {
     isWalleEnabled = 0;
   }
 
-  Serial.print("is enabled: ");
-  Serial.println(isWalleEnabled);
+  // Serial.print("is enabled: ");
+  // Serial.println(isWalleEnabled);
 }
 
 void oilPumpOn() {
-  Serial.print("oilPumOn function call. isOn: " );
-  Serial.print(oilPumpIsOn);
-  Serial.println();
+  // Serial.print("oilPumOn function call. isOn: " );
+  // Serial.print(oilPumpIsOn);
+  // Serial.println();
 
-  if ( ! oilPumpIsOn ) {
-    oilPumpIsOn = true;
-    oilPump.write( oilPumpStartupSpeed );
-    pumpStartTime = millis();
-  }
+  // if ( ! oilPumpIsOn ) {
+  //   oilPumpIsOn = true;
+  //   oilPump.write( oilPumpStartupSpeed );
+  //   pumpStartTime = millis();
+  // }
 }
 
 void oilPumpOff() {
@@ -201,9 +240,25 @@ void modifyOilPumpSpeed() {
     oilPumpOff();
   }
 
-  if ( lastSpeedChangeTime + 200 > millis() ) {
+  if ( detectIfIsMoving() ) {
     oilPumpOn();
   }
+}
+
+bool detectIfIsMoving() {
+  if ( lastSpeedChangeTime + 200 > millis() ) {
+    return true;
+  }
+
+  return false;
+}
+
+bool movedInThePastFiveSeconds() {
+  if ( lastSpeedChangeTime + 5000 > millis() ) {
+    return true;
+  }
+
+  return false;
 }
 
 /**
@@ -229,10 +284,10 @@ void headUpDown() {
     lastHeadUpDownChangeTime = millis();
   }
 
-  if ( millis() > lastHeadUpDownChangeTime + 500 ) {
-    headUpDownDirectionServoRight.detach();
-    headUpDownDirectionServoLeft.detach();
-  }
+  // if ( millis() > lastHeadUpDownChangeTime + 500 && ! movedInThePastFiveSeconds() ) {
+  //   headUpDownDirectionServoRight.detach();
+  //   headUpDownDirectionServoLeft.detach();
+  // }
 
   // Serial.print( "Head puslse: ");
   // Serial.print( headUpDownPulseWidthReverse );
@@ -242,6 +297,20 @@ void headUpDown() {
   // Serial.print(headUpDownMotorRightValueAngle);
   // Serial.print( " - ");
   // Serial.println();
+}
+
+// value should be between 10 - 15 - 20
+void moveHeadUPDown( int value ) {
+  int headUpDownMotorLeftValueAngle = constrain( map(value, 10, 20, 140, 40), 45, 130) +2;
+  int headUpDownMotorRightValueAngle = constrain( map(value, 10, 20, 40, 140), 50, 135);
+
+  headUpDownDirectionServoRight.attach(headUpDownDirectionMotorRightPin);
+  headUpDownDirectionServoLeft.attach(headUpDownDirectionMotorLeftPin);
+  headUpDownDirectionServoRight.write(headUpDownMotorRightValueAngle, 30, true);
+  headUpDownDirectionServoLeft.write(headUpDownMotorLeftValueAngle, 30, true);
+  headUpDownDirectionServoRight.wait();
+  headUpDownDirectionServoLeft.wait();
+  lastHeadUpDownChangeTime = millis();
 }
 
 /**
@@ -261,6 +330,7 @@ void headLeftRight() {
     lastHeadRightLeftValue = headRightLeftPulseNormalized;
     headRightLeftDirectionServo.attach(headRightLeftDirectionMotorPin);
     headRightLeftDirectionServo.write(headRightLeftMotorValueAngle);
+    // headRightLeftDirectionServo.write(headRightLeftMotorValueAngle, 40, true);
     lastHeadRightLeftChangeTime = millis();
 
     // Serial.print( "Head Left Right pulse normalized: ");
@@ -335,6 +405,45 @@ void backForwardPulseTimer() {
   if (backForwardCurrentTime > backForwardStartTime) {
     backForwardPulses = backForwardCurrentTime - backForwardStartTime;
     backForwardStartTime = backForwardCurrentTime;
+  }
+}
+
+void showRings() {
+  // music call attention x 2
+  playMusic( "02.wav" );
+  playMusic( "02.wav" );
+
+  // look up
+  moveHeadUPDown( 10 );
+
+  // music call attention x 2
+  playMusic( "02.wav" );
+
+  // look at right hand
+  moveHeadUPDown( 10 );
+  const byte rightHandAngle = 40;
+  headRightLeftDirectionServo.attach(headRightLeftDirectionMotorPin);
+  headRightLeftDirectionServo.write( rightHandAngle, 30, true);
+  headRightLeftDirectionServo.wait();
+
+  // make right hand up
+  rightArmServo.write(150, 20, true);
+  timeSinceItWasUp = millis();
+
+  // look up
+  moveHeadUPDown( 20 );
+  
+  // music ohhhh
+  playMusic( "05.wav" );
+
+  // Look up and centered
+  headRightLeftDirectionServo.attach(headRightLeftDirectionMotorPin);
+  headRightLeftDirectionServo.write( 90, 30, true);
+}
+
+void checkShouldFallHand() {
+  if ( millis() > timeSinceItWasUp + 10000 ) {
+    rightArmServo.write(0, 20, true);
   }
 }
 
