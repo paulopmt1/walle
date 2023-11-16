@@ -161,11 +161,11 @@ void loop() {
   detectIfWalleIsEnabled();
   modifyOilPumpSpeed();
 
-  if ( isWalleEnabled ) {  
+  if ( isWalleEnabled ) {
     headUpDown();
     headLeftRight();
     goingBackForward();
-    
+
     if ( detectSayWalle() ) {
       if ( lastMusicPlayedTime + 2000 < millis() ) {
         playMusic( "01.wav" );
@@ -256,7 +256,10 @@ bool detectSayWalle() {
 bool detectShowRings() {
   byte status = GetPWM(music2Pin);
 
-  if ( status > 7 ) {
+  Serial.print("show rings: ");
+  Serial.println(status);
+
+  if ( status >= 9 ) {
     return true;
   }
 
@@ -268,14 +271,16 @@ void detectIfWalleIsEnabled() {
   byte walleIsEnabledInputValue = GetPWM(detectWalleEnabledPin);
   
   // Button from controll return 5 for disable and 10 e enable
-  if ( walleIsEnabledInputValue > 7 ) {
+  if ( walleIsEnabledInputValue >= 9 ) {
     isWalleEnabled = 1;
   } else {
     isWalleEnabled = 0;
   }
 
-  // Serial.print("is enabled: ");
-  // Serial.println(isWalleEnabled);
+  Serial.print("walleIsEnabledInputValue: ");
+  Serial.print(walleIsEnabledInputValue);
+  Serial.print(" is enabled: ");
+  Serial.println(isWalleEnabled);
 }
 
 void oilPumpOn() {
@@ -354,14 +359,14 @@ void headUpDown() {
     // headUpDownDirectionServoLeft.detach();
   // }
 
-  Serial.print( "Head puslse: ");
-  Serial.print( headUpDownPulseWidthReverse );
-  Serial.print( " - left: ");
-  Serial.print(headUpDownMotorLeftValueAngle);
-  Serial.print( " - right: ");
-  Serial.print(headUpDownMotorRightValueAngle);
-  Serial.print( " - ");
-  Serial.println();
+  // Serial.print( "Head puslse: ");
+  // Serial.print( headUpDownPulseWidthReverse );
+  // Serial.print( " - left: ");
+  // Serial.print(headUpDownMotorLeftValueAngle);
+  // Serial.print( " - right: ");
+  // Serial.print(headUpDownMotorRightValueAngle);
+  // Serial.print( " - ");
+  // Serial.println();
 }
 
 // value should be between 10 - 15 - 20
@@ -491,18 +496,19 @@ void showRings() {
   headRightLeftDirectionServo.wait();
 
   // make right hand up
+  rightArmServo.attach( rightArmMotorPin );
   rightArmServo.write(70, 20, true);
   timeSinceItWasUp = millis();
 
   // look up
   moveHeadUPDown( 10 );
-  
-  // music ohhhh
-  playMusic( "05.wav" );
 
   // Look up and centered
   headRightLeftDirectionServo.attach(headRightLeftDirectionMotorPin);
   headRightLeftDirectionServo.write( 90, 30, true);
+
+  // music ohhhh
+  playMusic( "05.wav" );
 
   armIsUp = true;
 }
@@ -556,8 +562,10 @@ void checkShouldDisableHeadServos() {
 
 void checkShouldFallHand() {
   if ( millis() > timeSinceItWasUp + 10000 && armIsUp ) {
+    Serial.println("will put arm down");
     armIsUp = false;
     rightArmServo.write(0, 30, true);
+    rightArmServo.detach();
   }
 }
 
