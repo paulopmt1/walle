@@ -156,6 +156,7 @@ void setup(){
   pinMode( music3Pin, INPUT );
 }
 
+
 void loop() {
 
   detectIfWalleIsEnabled();
@@ -164,7 +165,7 @@ void loop() {
   if ( isWalleEnabled ) {
     headUpDown();
     headLeftRight();
-    goingBackForward();
+    // goingBackForward();
 
     if ( detectSayWalle() ) {
       if ( lastMusicPlayedTime + 2000 < millis() ) {
@@ -190,40 +191,43 @@ void loop() {
 
   checkShouldFallHand();
   checkShouldDisableHeadServos();
-
-
-  if ( rfControl.available() ) {
-    Serial.print("Received ");
-    String music = "";
-    int receivedValue = rfControl.getReceivedValue();
-    Serial.print( receivedValue );
-
-    if ( receivedValue == -26459 ) {
-      music = "01.wav";
-    }
-    else if ( receivedValue == -26475 ) {
-      showRings();
-      //music = "02.wav";
-    }
-    else if ( receivedValue == -235 ) {
-      walkingBetweenPeople();
-      // music = "03.wav";
-    }
-
-    // Serial.print(" / ");
-    // Serial.print( rfControl.getReceivedBitlength() );
-    // Serial.print("bit ");
-    // Serial.print("Protocol: ");
-    // Serial.println( rfControl.getReceivedProtocol() );
-    if ( music != "" ) {
-      playMusic( music );
-    }
-
-    lastRfSignal = millis();
-    rfControl.resetAvailable();
-  }
-  
+  checkRf433Commands();
 }
+
+
+void checkRf433Commands() {
+  String serialCommand = readSerial2String();
+  
+  if (serialCommand != "") {
+    Serial.println(serialCommand);
+
+    if ( serialCommand.indexOf("13309128") != -1 ) {
+        playMusic( "01.wav" );
+    }
+    if ( serialCommand.indexOf("13309124") != -1 ) {
+        playMusic( "02.wav" );
+    }
+    if ( serialCommand.indexOf("13309129") != -1 ) {
+        playMusic( "03.wav" );
+    }
+    if ( serialCommand.indexOf("13309132") != -1 ) {
+        playMusic( "07.wav" );
+    }
+    if ( serialCommand.indexOf("13309122") != -1 ) {
+        playMusic( "05.wav" );
+    }
+    if ( serialCommand.indexOf("13309125") != -1 ) {
+        playMusic( "06.wav" );
+    }
+    if ( serialCommand.indexOf("13309121") != -1 ) {
+        showRings();
+    }
+    if ( serialCommand.indexOf("13309123") != -1 ) {
+        walkingBetweenPeople();
+    }
+  }
+}
+
 
 void playMusic( String music ) {
 
@@ -256,8 +260,8 @@ bool detectSayWalle() {
 bool detectShowRings() {
   byte status = GetPWM(music2Pin);
 
-  Serial.print("show rings: ");
-  Serial.println(status);
+  // Serial.print("show rings: ");
+  // Serial.println(status);
 
   if ( status >= 9 ) {
     return true;
@@ -277,10 +281,10 @@ void detectIfWalleIsEnabled() {
     isWalleEnabled = 0;
   }
 
-  Serial.print("walleIsEnabledInputValue: ");
-  Serial.print(walleIsEnabledInputValue);
-  Serial.print(" is enabled: ");
-  Serial.println(isWalleEnabled);
+  // Serial.print("walleIsEnabledInputValue: ");
+  // Serial.print(walleIsEnabledInputValue);
+  // Serial.print(" is enabled: ");
+  // Serial.println(isWalleEnabled);
 }
 
 void oilPumpOn() {
@@ -416,37 +420,33 @@ void headLeftRight() {
 
 }
 
-/**
- * Going forward and backwards
- */
-void goingBackForward() {
-  if (backForwardPulses < 2000){
-    backForwardPulseWidth = backForwardPulses;
-  }
+// /**
+//  * Going forward and backwards
+//  */
+// void goingBackForward() {
+//   const int backForwardPulseWidthNormalized = round( backForwardPulseWidth * 0.01 );
+//   const int frontPWMValue = constrain( map( backForwardPulseWidthNormalized, 15, 20, 0, MAX_SPEED_PWM_VALUE ), 0, MAX_SPEED_PWM_VALUE );
+//   const int backwardsPWMValue = constrain( map( backForwardPulseWidthNormalized, 15, 10, 0, MAX_SPEED_PWM_VALUE ), 0, MAX_SPEED_PWM_VALUE );
 
-  const int backForwardPulseWidthNormalized = round( backForwardPulseWidth * 0.01 );
-  const int frontPWMValue = constrain( map( backForwardPulseWidthNormalized, 15, 20, 0, MAX_SPEED_PWM_VALUE ), 0, MAX_SPEED_PWM_VALUE );
-  const int backwardsPWMValue = constrain( map( backForwardPulseWidthNormalized, 15, 10, 0, MAX_SPEED_PWM_VALUE ), 0, MAX_SPEED_PWM_VALUE );
+//   if ( frontPWMValue > 10 || backwardsPWMValue > 10 ) {
+//     lastSpeedChangeTime = millis();
+//   }
 
-  if ( frontPWMValue > 10 || backwardsPWMValue > 10 ) {
-    lastSpeedChangeTime = millis();
-  }
-
-  if ( frontPWMValue > 0 ) {
-    digitalWrite( backForwardDirectionMotorRearPin, LOW );
-    analogWrite( backForwardDirectionMotorFrontPin, frontPWMValue );
-  } else {
-    digitalWrite( backForwardDirectionMotorFrontPin, LOW );
-    analogWrite( backForwardDirectionMotorRearPin, backwardsPWMValue );
-  }
-  // Serial.print( "Back forward puslse: ");
-  // Serial.print( backForwardPulseWidthNormalized );
-  // Serial.print( " - frontPWMValue: ");
-  // Serial.print( frontPWMValue );
-  // Serial.print( " - backwardsPWMValue: ");
-  // Serial.print( backwardsPWMValue );
-  // Serial.println();
-}
+//   if ( frontPWMValue > 0 ) {
+//     digitalWrite( backForwardDirectionMotorRearPin, LOW );
+//     analogWrite( backForwardDirectionMotorFrontPin, frontPWMValue );
+//   } else {
+//     digitalWrite( backForwardDirectionMotorFrontPin, LOW );
+//     analogWrite( backForwardDirectionMotorRearPin, backwardsPWMValue );
+//   }
+//   // Serial.print( "Back forward puslse: ");
+//   // Serial.print( backForwardPulseWidthNormalized );
+//   // Serial.print( " - frontPWMValue: ");
+//   // Serial.print( frontPWMValue );
+//   // Serial.print( " - backwardsPWMValue: ");
+//   // Serial.print( backwardsPWMValue );
+//   // Serial.println();
+// }
 
 
 
@@ -474,6 +474,28 @@ void backForwardPulseTimer() {
   if (backForwardCurrentTime > backForwardStartTime) {
     backForwardPulses = backForwardCurrentTime - backForwardStartTime;
     backForwardStartTime = backForwardCurrentTime;
+
+    if (backForwardPulses < 2000){
+      backForwardPulseWidth = backForwardPulses;
+    }
+
+    if ( isWalleEnabled ) {
+      const int backForwardPulseWidthNormalized = round( backForwardPulseWidth * 0.01 );
+      const int frontPWMValue = constrain( map( backForwardPulseWidthNormalized, 15, 20, 0, MAX_SPEED_PWM_VALUE ), 0, MAX_SPEED_PWM_VALUE );
+      const int backwardsPWMValue = constrain( map( backForwardPulseWidthNormalized, 15, 10, 0, MAX_SPEED_PWM_VALUE ), 0, MAX_SPEED_PWM_VALUE );
+
+      if ( frontPWMValue > 10 || backwardsPWMValue > 10 ) {
+        lastSpeedChangeTime = millis();
+      }
+
+      if ( frontPWMValue > 0 ) {
+        digitalWrite( backForwardDirectionMotorRearPin, LOW );
+        analogWrite( backForwardDirectionMotorFrontPin, frontPWMValue );
+      } else {
+        digitalWrite( backForwardDirectionMotorFrontPin, LOW );
+        analogWrite( backForwardDirectionMotorRearPin, backwardsPWMValue );
+      }
+    }
   }
 }
 
@@ -528,26 +550,26 @@ void walkingBetweenPeople() {
 
   // look at right and left
   headRightLeftDirectionServo.attach(headRightLeftDirectionMotorPin);
-  headRightLeftDirectionServo.write( 0, 10, true);
+  headRightLeftDirectionServo.write( 0, 10, false);
   headRightLeftDirectionServo.wait();
   playMusic( "03.wav" );
-  headRightLeftDirectionServo.write( 180, 10, true);
+  headRightLeftDirectionServo.write( 180, 10, false);
   headRightLeftDirectionServo.wait();
 
   timeSinceItWasUp = millis();
 
   headRightLeftDirectionServo.attach(headRightLeftDirectionMotorPin);
-  headRightLeftDirectionServo.write( 0, 10, true);
+  headRightLeftDirectionServo.write( 0, 10, false);
   headRightLeftDirectionServo.wait();
   playMusic( "03.wav" );
-  headRightLeftDirectionServo.write( 180, 10, true);
+  headRightLeftDirectionServo.write( 180, 10, false);
   headRightLeftDirectionServo.wait();
 
   timeSinceItWasUp = millis();
 
   // Look up and centered
   playMusic( "03.wav" );
-  headRightLeftDirectionServo.write( 90, 10, true);
+  headRightLeftDirectionServo.write( 90, 10, false);
 
   playMusic( "01.wav" );
 
@@ -578,4 +600,29 @@ byte GetPWM(byte pin) {
     return digitalRead(pin) ? 100 : 0;  // HIGH == 100%,  LOW = 0%
 
   return (100 * highTime) / (highTime + lowTime);  // highTime as percentage of total cycle time
+}
+
+  
+/**
+ * Função que lê uma string da Serial
+ * e retorna-a
+ */
+String readSerial2String(){
+  String conteudo = "";
+  char caractere;
+  
+  // Enquanto receber algo pela serial
+  while(Serial2.available() > 0) {
+    // Lê byte da serial
+    caractere = Serial2.read();
+    // Ignora caractere de quebra de linha
+    if (caractere != '\n'){
+      // Concatena valores
+      conteudo.concat(caractere);
+    }
+    // Aguarda buffer serial ler próximo caractere
+    delay(10);
+  }
+    
+  return conteudo;
 }
